@@ -39,25 +39,27 @@ def collect_docker_metrics(ts=None):
 
     db = SessionLocal()
     try:
-        # 1. 환경변수 간섭 방지 (http+docker 관련 에러 해결용)
+        # 1. 환경변수 강제 교정 (http+docker 에러 해결)
         import os
-        if 'DOCKER_HOST' in os.environ:
-            del os.environ['DOCKER_HOST']
+        os.environ['DOCKER_HOST'] = 'unix:///var/run/docker.sock'
+        if 'DOCKER_CONTEXT' in os.environ:
+            del os.environ['DOCKER_CONTEXT']
             
         client = None
-        # 2. 소켓 직접 연결 시도 (컨테이너 환경에서 가장 확실함)
+        # 2. 가장 확실한 연결 방식 시도
         try:
-            # unix:// 형식이 간혹 말썽을 부리면 unix:/// (슬래시 3개)를 시도하거나 
-            # DockerClient 대신 APIClient를 직접 쓸 수도 있지만, 일단 표준으로 시도
-            client = docker.DockerClient(base_url='unix://var/run/docker.sock', version='auto')
+            # version='auto'를 제거하여 불필요한 버전 체크 간섭 방지
+            client = docker.DockerClient(base_url='unix:///var/run/docker.sock')
             client.ping()
         except Exception as e:
-            logger.warning(f"소켓 직접 연결 실패 ({e}), 기본 설정으로 재시도합니다.")
+            logger.warning(f"고급 연결 실패 ({e}), APIClient로 재시도합니다.")
             try:
-                client = docker.from_env()
+                from docker import APIClient
+                low_level_client = APIClient(base_url='unix:///var/run/docker.sock')
+                client = docker.DockerClient(low_level_api=low_level_client)
                 client.ping()
-            except Exception as env_e:
-                logger.error(f"도커 연결 최종 실패: {env_e}")
+            except Exception as api_e:
+                logger.error(f"도커 모든 연결수단 실패: {api_e}")
                 return None
 
         containers = client.containers.list()
