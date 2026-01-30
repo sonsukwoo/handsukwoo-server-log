@@ -12,8 +12,10 @@ services:
     environment:
       - TZ=Asia/Seoul
     # 2. 도커 상태(/var/run/docker.sock) 및 Tmux 소켓(/tmp) 연결
+    # 호스트의 docker CLI도 마운트하여 컨테이너에서 직접 사용
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+      - /usr/bin/docker:/usr/bin/docker:ro
       - /tmp:/tmp
     # 3. 호스트 네트워크 사용 (DB, Netdata와 바로 통신)
     network_mode: "host"
