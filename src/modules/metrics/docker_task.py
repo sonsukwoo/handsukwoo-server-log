@@ -2,11 +2,14 @@ import logging
 import os
 from datetime import datetime
 
-# [CRITICAL] docker 라이브러리가 로드되기 전에 환경변수를 먼저 정리합니다.
-# http+docker:// 관련 에러 방지를 위해 강제로 초기화합니다.
-for env_key in ['DOCKER_HOST', 'DOCKER_CONTEXT', 'DOCKER_TLS_VERIFY', 'DOCKER_CERT_PATH']:
-    if env_key in os.environ:
-        del os.environ[env_key]
+# [CRITICAL] 어떤 환경에서도 도커 라이브러리가 엉뚱한 설정을 읽지 못하도록 
+# 모든 도커 관련 환경 변수를 메모리상에서 즉시 제거합니다.
+for key in list(os.environ.keys()):
+    if key.startswith('DOCKER_'):
+        del os.environ[key]
+
+# 그 후 소켓 경로만 수동으로 지정 (일부 시스템 호환성을 위해 unix:/// 사용)
+os.environ['DOCKER_HOST'] = 'unix:///var/run/docker.sock'
 
 import docker
 from src.database.connection import SessionLocal
@@ -48,15 +51,17 @@ def collect_docker_metrics(ts=None):
     db = SessionLocal()
     try:
         client = None
-        # 도커 소켓 직접 연결 (가장 확실한 방법)
+        # 도커 소켓 직접 연결 시도 (APIClient를 통한 저수준 연결)
         try:
-            # unix:// 형식을 사용하거나, context와 상관없이 소켓 직접 지적
-            client = docker.DockerClient(base_url='unix://var/run/docker.sock')
+            # DockerClient 대신 APIClient를 직접 생성하여 불필요한 추상화 제거
+            from docker import APIClient
+            low_client = APIClient(base_url='unix:///var/run/docker.sock', version='auto')
+            client = docker.DockerClient(api_client=low_client)
             client.ping()
         except Exception as e:
-            logger.warning(f"표준 소켓 연결 실패 ({e}), 폴백(from_env) 시도...")
+            logger.warning(f"고급 소켓 연결 실패 ({e}), 표준 연결로 재시도...")
             try:
-                client = docker.from_env()
+                client = docker.DockerClient(base_url='unix:///var/run/docker.sock')
                 client.ping()
             except Exception as env_e:
                 logger.error(f"도커 모든 연결수단 실패: {env_e}")
