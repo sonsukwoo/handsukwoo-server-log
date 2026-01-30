@@ -1,48 +1,22 @@
+"""
+Docker 메트릭 수집 모듈 (CLI 버전)
+
+파이썬 docker 라이브러리 대신, subprocess를 통해 docker CLI를 직접 호출합니다.
+이 방식은 서버의 도커 컨텍스트 설정과 무관하게 작동합니다.
+"""
+import subprocess
+import json
 import logging
-import os
 from datetime import datetime
-
-# [CRITICAL] 어떤 환경에서도 도커 라이브러리가 엉뚱한 설정을 읽지 못하도록 
-# 모든 도커 관련 환경 변수를 메모리상에서 즉시 제거합니다.
-for key in list(os.environ.keys()):
-    if key.startswith('DOCKER_'):
-        del os.environ[key]
-
-# 그 후 소켓 경로만 수동으로 지정 (일부 시스템 호환성을 위해 unix:/// 사용)
-os.environ['DOCKER_HOST'] = 'unix:///var/run/docker.sock'
-
-import docker
 from src.database.connection import SessionLocal
 from .models import DockerMetric
 
 logger = logging.getLogger("DOCKER")
 
-def calculate_cpu_percent(stats):
-    """
-    도커 통계 데이터를 바탕으로 CPU 사용률(%) 계산
-    """
-    cpu_percent = 0.0
-    try:
-        cpu_delta = stats['cpu_stats']['cpu_usage']['total_usage'] - \
-                    stats['precpu_stats']['cpu_usage']['total_usage']
-        system_delta = stats['cpu_stats']['system_cpu_usage'] - \
-                       stats['precpu_stats']['system_cpu_usage']
-        
-        if system_delta > 0.0 and cpu_delta > 0.0:
-            # (CPU 변화량 / 시스템 CPU 변화량) * 코어 수 * 100
-            # percpu_usage 길이로 코어 수를 추정
-            per_cpu = stats['cpu_stats']['cpu_usage'].get('percpu_usage')
-            if per_cpu is None:
-                per_cpu = [1] # fallback
-                
-            cpu_percent = (cpu_delta / system_delta) * len(per_cpu) * 100.0
-    except KeyError:
-        cpu_percent = 0.0
-    return cpu_percent
 
 def collect_docker_metrics(ts=None):
     """
-    실행 중인 모든 도커 컨테이너의 지표를 수집하여 DB에 저장
+    docker CLI를 통해 실행 중인 컨테이너의 지표를 수집하여 DB에 저장합니다.
     ts: main.py에서 전달받은 동기화된 타임스탬프
     """
     if ts is None:
@@ -50,53 +24,69 @@ def collect_docker_metrics(ts=None):
 
     db = SessionLocal()
     try:
-        client = None
-        # 도커 소켓 직접 연결 시도 (APIClient를 통한 저수준 연결)
-        try:
-            # DockerClient 대신 APIClient를 직접 생성하여 불필요한 추상화 제거
-            from docker import APIClient
-            low_client = APIClient(base_url='unix:///var/run/docker.sock', version='auto')
-            client = docker.DockerClient(api_client=low_client)
-            client.ping()
-        except Exception as e:
-            logger.warning(f"고급 소켓 연결 실패 ({e}), 표준 연결로 재시도...")
-            try:
-                client = docker.DockerClient(base_url='unix:///var/run/docker.sock')
-                client.ping()
-            except Exception as env_e:
-                logger.error(f"도커 모든 연결수단 실패: {env_e}")
-                return None
-
-        containers = client.containers.list()
+        # docker stats 명령어 실행 (JSON 형식으로 1회 스냅샷)
+        # --no-stream 옵션으로 1회만 출력하고 종료
+        # --format으로 JSON 형태로 출력
+        cmd = [
+            'docker', 'stats', '--no-stream', 
+            '--format', '{{json .}}'
+        ]
         
+        result = subprocess.run(
+            cmd, 
+            capture_output=True, 
+            text=True, 
+            timeout=30
+        )
+        
+        if result.returncode != 0:
+            logger.error(f"docker stats 명령 실패: {result.stderr}")
+            return None
+            
+        if not result.stdout.strip():
+            logger.info("실행 중인 컨테이너가 없습니다.")
+            return "Docker: 0 containers"
+
         metrics_to_save = []
-        for container in containers:
+        for line in result.stdout.strip().split('\n'):
+            if not line:
+                continue
             try:
-                # stream=False로 설정하여 1회성 스냅샷 가져오기
-                stats = container.stats(stream=False)
+                data = json.loads(line)
                 
-                cpu_p = calculate_cpu_percent(stats)
+                # CPU 사용률 파싱 (예: "0.50%")
+                cpu_str = data.get('CPUPerc', '0%').replace('%', '')
+                cpu_percent = float(cpu_str) if cpu_str else 0.0
                 
-                # 메모리 계산
-                mem_usage = stats['memory_stats'].get('usage', 0)
-                mem_limit = stats['memory_stats'].get('limit', 0)
-                mem_used_mb = mem_usage / (1024 * 1024)
-                mem_percent = 0.0
-                if mem_limit > 0:
-                    mem_percent = (mem_usage / mem_limit) * 100.0
+                # 메모리 사용량 파싱 (예: "50MiB / 7.66GiB")
+                mem_str = data.get('MemUsage', '0MiB / 0GiB')
+                mem_used_str = mem_str.split('/')[0].strip()
+                
+                # MiB, GiB, KiB 단위 처리
+                mem_used_mb = 0.0
+                if 'GiB' in mem_used_str:
+                    mem_used_mb = float(mem_used_str.replace('GiB', '').strip()) * 1024
+                elif 'MiB' in mem_used_str:
+                    mem_used_mb = float(mem_used_str.replace('MiB', '').strip())
+                elif 'KiB' in mem_used_str:
+                    mem_used_mb = float(mem_used_str.replace('KiB', '').strip()) / 1024
+                
+                # 메모리 퍼센트 파싱 (예: "0.64%")
+                mem_percent_str = data.get('MemPerc', '0%').replace('%', '')
+                mem_percent = float(mem_percent_str) if mem_percent_str else 0.0
                 
                 new_metric = DockerMetric(
                     ts=ts,
-                    container_id=container.short_id,
-                    container_name=container.name,
-                    cpu_percent=cpu_p,
+                    container_id=data.get('ID', 'unknown')[:12],
+                    container_name=data.get('Name', 'unknown'),
+                    cpu_percent=cpu_percent,
                     mem_used_mb=mem_used_mb,
                     mem_percent=mem_percent
                 )
                 metrics_to_save.append(new_metric)
                 
-            except Exception as e:
-                logger.warning(f"컨테이너 {container.name} 지표 수집 실패: {e}")
+            except (json.JSONDecodeError, ValueError, KeyError) as e:
+                logger.warning(f"컨테이너 데이터 파싱 실패: {e}")
                 continue
 
         if metrics_to_save:
@@ -105,6 +95,14 @@ def collect_docker_metrics(ts=None):
             logger.info(f"도커 지표 저장 완료 ({len(metrics_to_save)}개 컨테이너)")
             return f"Docker: {len(metrics_to_save)} containers collected"
         
+        return "Docker: 0 containers"
+        
+    except subprocess.TimeoutExpired:
+        logger.error("docker stats 명령이 시간 초과되었습니다.")
+        return None
+    except FileNotFoundError:
+        logger.error("docker 명령을 찾을 수 없습니다. 컨테이너에 docker CLI가 설치되어 있는지 확인하세요.")
+        return None
     except Exception as e:
         db.rollback()
         logger.error(f"도커 수집 중 오류 발생: {e}")

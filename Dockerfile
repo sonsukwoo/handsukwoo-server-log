@@ -2,9 +2,10 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Tmux 및 빌드 도구 설치 (psutil 컴파일용)
+# Tmux, Docker CLI, 빌드 도구 설치
 RUN apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends tmux gcc python3-dev tzdata && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+    tmux gcc python3-dev tzdata docker.io && \
     rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
