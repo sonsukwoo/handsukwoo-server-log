@@ -39,19 +39,25 @@ def collect_docker_metrics(ts=None):
 
     db = SessionLocal()
     try:
+        # 1. 환경변수 간섭 방지 (http+docker 관련 에러 해결용)
+        import os
+        if 'DOCKER_HOST' in os.environ:
+            del os.environ['DOCKER_HOST']
+            
         client = None
-        # 1. 환경변수/기본 설정으로 시도
+        # 2. 소켓 직접 연결 시도 (컨테이너 환경에서 가장 확실함)
         try:
-            client = docker.from_env()
-            client.ping() # 연결 테스트
+            # unix:// 형식이 간혹 말썽을 부리면 unix:/// (슬래시 3개)를 시도하거나 
+            # DockerClient 대신 APIClient를 직접 쓸 수도 있지만, 일단 표준으로 시도
+            client = docker.DockerClient(base_url='unix://var/run/docker.sock', version='auto')
+            client.ping()
         except Exception as e:
-            logger.warning(f"기본 도커 연결 실패 ({e}), 소켓 직접 연결을 시도합니다.")
-            # 2. Mac/Linux 소켓 직접 지정 시도
+            logger.warning(f"소켓 직접 연결 실패 ({e}), 기본 설정으로 재시도합니다.")
             try:
-                client = docker.DockerClient(base_url='unix://var/run/docker.sock')
+                client = docker.from_env()
                 client.ping()
-            except Exception as socket_e:
-                logger.error(f"도커 소켓 연결도 실패했습니다: {socket_e}")
+            except Exception as env_e:
+                logger.error(f"도커 연결 최종 실패: {env_e}")
                 return None
 
         containers = client.containers.list()
