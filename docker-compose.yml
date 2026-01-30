@@ -1,0 +1,19 @@
+version: '3.8'
+
+services:
+  server-log:
+    # 서비스 이름을 프로젝트에 맞춰 변경
+    build: .
+    container_name: server-log
+    restart: unless-stopped
+    # 1. 환경 변수 파일 로드 (맥에서 만든 .env 활용)
+    env_file:
+      - .env
+    environment:
+      - TZ=Asia/Seoul
+    # 2. 도커 상태(/var/run/docker.sock) 및 Tmux 소켓(/tmp) 연결
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /tmp:/tmp
+    # 3. 호스트 네트워크 사용 (DB, Netdata와 바로 통신)
+    network_mode: "host"
