@@ -14,13 +14,14 @@ from .models import DockerMetric
 logger = logging.getLogger("DOCKER")
 
 
-def collect_docker_metrics(ts=None):
+def collect_docker_metrics(ts=None, batch_id=None):
     """
     docker CLI를 통해 실행 중인 컨테이너의 지표를 수집하여 DB에 저장합니다.
     ts: main.py에서 전달받은 동기화된 타임스탬프
     """
     if ts is None:
         ts = datetime.now()
+    batch_id = batch_id or ts.isoformat()
 
     db = SessionLocal()
     try:
@@ -77,6 +78,7 @@ def collect_docker_metrics(ts=None):
                 
                 new_metric = DockerMetric(
                     ts=ts,
+                    batch_id=batch_id,
                     container_id=data.get('ID', 'unknown')[:12],
                     container_name=data.get('Name', 'unknown'),
                     cpu_percent=cpu_percent,

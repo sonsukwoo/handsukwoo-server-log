@@ -68,12 +68,13 @@ def get_tmux_sessions():
         
     return sessions
 
-def collect_runtime_status(ts=None):
+def collect_runtime_status(ts=None, batch_id=None):
     """
     Tmux 세션 등의 런타임 상태 정보를 수집하여 DB에 저장 (Tier 2: 1분 주기)
     """
     if ts is None:
         ts = datetime.now()
+    batch_id = batch_id or ts.isoformat()
 
     db = SessionLocal()
     try:
@@ -84,6 +85,7 @@ def collect_runtime_status(ts=None):
         for s in sessions:
             new_session = TmuxSession(
                 ts=ts,
+                batch_id=batch_id,
                 session_name=s['name'],
                 attached=s['attached'],
                 windows=s['windows']

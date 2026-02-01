@@ -23,8 +23,7 @@ def initialize_db():
     try:
         # 모든 모델을 임포트해야 Base.metadata.create_all()이 인식함
         from src.modules.metrics.models import (
-            SystemMetric, CpuMetric, MemoryMetric, DiskMetric, NetworkMetric,
-            DockerMetric, DockerImage
+            CpuMetric, MemoryMetric, DiskMetric, NetworkMetric, DockerMetric
         )
         from src.modules.events.models import (
             LoginEvent, SystemEvent, CloudflareTunnel
@@ -51,20 +50,34 @@ def initialize_db():
             Base.metadata.create_all(engine)
             
             # 4. 인간 친화적인 요약 뷰(View) 생성
-            # (1) 시스템 통계 요약
-            view_system_sql = """
-            CREATE OR REPLACE VIEW ops_metrics.v_system_summary AS
-            SELECT 
-                id,
-                ts AS "시각",
-                ROUND(cpu_total::numeric, 2) || '%' AS "CPU 전체",
-                ROUND(cpu_user::numeric, 2) || '%' AS "CPU 유저",
-                ROUND(ram_percent::numeric, 2) || '%' AS "RAM 사용률",
-                ROUND(ram_used_mb::numeric, 0) || 'MB / ' || ROUND(ram_total_mb::numeric, 0) || 'MB' AS "RAM 상세",
-                load_1min AS "부하(1분)",
-                '[Tier 1] System: ' || ROUND(cpu_total::numeric, 2) || '% CPU, ' || 
-                ROUND(ram_percent::numeric, 2) || '% RAM' AS "문장 요약"
-            FROM ops_metrics.metrics_system;
+            # (1) 자원 통합 요약
+            view_resource_sql = """
+            CREATE OR REPLACE VIEW ops_metrics.v_resource_summary AS
+            SELECT
+                c.ts AS "시각",
+                c.batch_id AS "배치 ID",
+                ROUND(c.cpu_percent::numeric, 2) || '%' AS "CPU 전체",
+                ROUND(c.cpu_user::numeric, 2) || '%' AS "CPU 유저",
+                ROUND(c.cpu_system::numeric, 2) || '%' AS "CPU 시스템",
+                ROUND(m.mem_percent::numeric, 2) || '%' AS "RAM 사용률",
+                ROUND(m.mem_used_mb::numeric, 0) || 'MB / ' || ROUND(m.mem_total_mb::numeric, 0) || 'MB' AS "RAM 상세",
+                ROUND(d.disk_percent::numeric, 2) || '%' AS "디스크 사용률",
+                ROUND(n.rx_rate_bps::numeric / 1024 / 1024, 2) || 'MB/s' AS "네트워크 수신",
+                ROUND(n.tx_rate_bps::numeric / 1024 / 1024, 2) || 'MB/s' AS "네트워크 송신",
+                '[Resource] CPU ' || ROUND(c.cpu_percent::numeric, 2) || '%, RAM ' ||
+                ROUND(m.mem_percent::numeric, 2) || '%, Disk ' || ROUND(d.disk_percent::numeric, 2) || '%' AS "문장 요약"
+            FROM ops_metrics.metrics_cpu c
+            LEFT JOIN ops_metrics.metrics_memory m ON m.batch_id = c.batch_id
+            LEFT JOIN (
+                SELECT batch_id, MAX(disk_percent) AS disk_percent
+                FROM ops_metrics.metrics_disk
+                GROUP BY batch_id
+            ) d ON d.batch_id = c.batch_id
+            LEFT JOIN (
+                SELECT batch_id, SUM(rx_rate_bps) AS rx_rate_bps, SUM(tx_rate_bps) AS tx_rate_bps
+                FROM ops_metrics.metrics_network
+                GROUP BY batch_id
+            ) n ON n.batch_id = c.batch_id;
             """
             
             # (2) 도커 컨테이너 요약
@@ -96,9 +109,21 @@ def initialize_db():
             FROM ops_runtime.tmux_sessions;
             """
 
-            conn.execute(text(view_system_sql))
+            conn.execute(text(view_resource_sql))
             conn.execute(text(view_docker_sql))
             conn.execute(text(view_runtime_sql))
+            conn.execute(text(
+                "COMMENT ON VIEW ops_metrics.v_resource_summary IS "
+                "'CPU/RAM/디스크/네트워크 요약을 한 줄로 제공하는 통합 뷰. LLM 기본 조회용.';"
+            ))
+            conn.execute(text(
+                "COMMENT ON VIEW ops_metrics.v_docker_summary IS "
+                "'도커 컨테이너별 CPU/RAM 요약을 제공하는 뷰.';"
+            ))
+            conn.execute(text(
+                "COMMENT ON VIEW ops_runtime.v_runtime_summary IS "
+                "'tmux 세션 상태를 요약해서 보여주는 뷰.';"
+            ))
             conn.commit()
             
             print("✅ DB 초기화 및 모든 요약 뷰(Summary Views) 생성 완료")
