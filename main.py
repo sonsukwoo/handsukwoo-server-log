@@ -10,7 +10,6 @@ from src.modules.metrics.system_task import (
 )
 from src.modules.metrics.docker_task import collect_docker_metrics
 from src.modules.runtime.tmux_task import collect_runtime_status
-from src.embeddings.schema_sync import sync_schema_embeddings
 
 # 로깅 설정 (INFO 레벨로 설정하여 주요 흐름 확인)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(name)s] %(message)s')
@@ -18,7 +17,6 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(name)s] %(message
 def main():
     # 🚀 시작 시 DB 구조부터 잡기 (기존 데이터 삭제됨)
     initialize_db()
-    sync_schema_embeddings(force=True)
     
     logging.info("서버 에이전트 가동 시작 (T1: 10s, T2: 60s, T3: 1h)")
     
@@ -52,8 +50,6 @@ def main():
             if count_t2 % 6 == 0:
                 res_run = collect_runtime_status(ts=now, batch_id=batch_id)
                 if res_run: logging.info(f"[Tier 2] {res_run}")
-                # 스키마 변경 감지 및 임베딩 동기화 (1분 주기)
-                sync_schema_embeddings(force=False)
             
             # ------------------------------------------------------------------
             # [Tier 3] 저빈도/통계 데이터 (1시간 주기: 10초 * 360)

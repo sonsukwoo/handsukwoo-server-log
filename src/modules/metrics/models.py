@@ -18,9 +18,9 @@ class CpuMetric(Base):
         "comment": "CPU 사용률과 부하(load average) 등을 저장하는 상세 테이블. 시간(ts) 기준으로 조회/집계한다.",
     }
 
-    id = Column(Integer, primary_key=True)
-    ts = Column(DateTime(timezone=True), server_default=func.now(), index=True)
-    batch_id = Column(Text, index=True, comment="수집 사이클을 구분하는 배치 ID")
+    id = Column(Integer, primary_key=True, comment="행 식별자(PK). 조인에는 사용하지 않음.")
+    ts = Column(DateTime(timezone=True), server_default=func.now(), index=True, comment="수집 시각. 시간 범위 필터/정렬에 사용.")
+    batch_id = Column(Text, index=True, comment="동일 수집 사이클 식별자. ts 미세 오차로 조인이 실패하는 것을 방지하기 위해 사용.")
 
     core_count = Column(Integer, comment="논리 코어 수.")
     cpu_percent = Column(Float, comment="전체 CPU 사용률(%).")
@@ -42,9 +42,9 @@ class MemoryMetric(Base):
         "comment": "RAM과 Swap 사용량을 저장하는 상세 테이블. 시간(ts) 기준으로 조회/집계한다.",
     }
 
-    id = Column(Integer, primary_key=True)
-    ts = Column(DateTime(timezone=True), server_default=func.now(), index=True)
-    batch_id = Column(Text, index=True, comment="수집 사이클을 구분하는 배치 ID")
+    id = Column(Integer, primary_key=True, comment="행 식별자(PK). 조인에는 사용하지 않음.")
+    ts = Column(DateTime(timezone=True), server_default=func.now(), index=True, comment="수집 시각. 시간 범위 필터/정렬에 사용.")
+    batch_id = Column(Text, index=True, comment="동일 수집 사이클 식별자. ts 미세 오차로 조인이 실패하는 것을 방지하기 위해 사용.")
 
     mem_total_mb = Column(Float, comment="총 메모리 용량(MB).")
     mem_used_mb = Column(Float, comment="사용 중 메모리(MB).")
@@ -66,9 +66,9 @@ class DiskMetric(Base):
         "comment": "마운트 지점별 디스크 사용량을 저장하는 테이블.",
     }
 
-    id = Column(Integer, primary_key=True)
-    ts = Column(DateTime(timezone=True), server_default=func.now(), index=True)
-    batch_id = Column(Text, index=True, comment="수집 사이클을 구분하는 배치 ID")
+    id = Column(Integer, primary_key=True, comment="행 식별자(PK). 조인에는 사용하지 않음.")
+    ts = Column(DateTime(timezone=True), server_default=func.now(), index=True, comment="수집 시각. 시간 범위 필터/정렬에 사용.")
+    batch_id = Column(Text, index=True, comment="동일 수집 사이클 식별자. ts 미세 오차로 조인이 실패하는 것을 방지하기 위해 사용.")
 
     mount = Column(Text, nullable=False, comment="마운트 지점(예: /, /home).")
     disk_total_gb = Column(Float, comment="총 디스크 용량(GB).")
@@ -90,9 +90,9 @@ class NetworkMetric(Base):
         "comment": "네트워크 인터페이스별 트래픽을 저장하는 테이블.",
     }
 
-    id = Column(Integer, primary_key=True)
-    ts = Column(DateTime(timezone=True), server_default=func.now(), index=True)
-    batch_id = Column(Text, index=True, comment="수집 사이클을 구분하는 배치 ID")
+    id = Column(Integer, primary_key=True, comment="행 식별자(PK). 조인에는 사용하지 않음.")
+    ts = Column(DateTime(timezone=True), server_default=func.now(), index=True, comment="수집 시각. 시간 범위 필터/정렬에 사용.")
+    batch_id = Column(Text, index=True, comment="동일 수집 사이클 식별자. ts 미세 오차로 조인이 실패하는 것을 방지하기 위해 사용.")
 
     interface = Column(Text, nullable=False, comment="네트워크 인터페이스명(예: eth0).")
     rx_bytes = Column(BigInteger, comment="누적 수신 바이트.")
@@ -114,9 +114,9 @@ class DockerMetric(Base):
         {"schema": "ops_metrics", "comment": "도커 컨테이너별 CPU/메모리 사용량 스냅샷 테이블."},
     )
 
-    id = Column(Integer, primary_key=True)
-    ts = Column(DateTime(timezone=True), server_default=func.now(), index=True)
-    batch_id = Column(Text, index=True, comment="수집 사이클을 구분하는 배치 ID")
+    id = Column(Integer, primary_key=True, comment="행 식별자(PK). 조인에는 사용하지 않음.")
+    ts = Column(DateTime(timezone=True), server_default=func.now(), index=True, comment="수집 시각. 시간 범위 필터/정렬에 사용.")
+    batch_id = Column(Text, index=True, comment="동일 수집 사이클 식별자. ts 미세 오차로 조인이 실패하는 것을 방지하기 위해 사용.")
 
     container_id = Column(Text, nullable=False, comment="도커 컨테이너 ID.")
     container_name = Column(Text, nullable=False, index=True, comment="도커 컨테이너 이름.")
