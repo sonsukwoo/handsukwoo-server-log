@@ -10,6 +10,9 @@ from src.modules.metrics.system_task import (
 )
 from src.modules.metrics.docker_task import collect_docker_metrics
 from src.modules.runtime.tmux_task import collect_runtime_status
+from src.modules.events.auth_task import collect_auth_logs
+from src.modules.events.system_event_task import collect_system_events
+from src.modules.events.cloudflare_task import collect_cloudflare_status
 
 # 로깅 설정 (INFO 레벨로 설정하여 주요 흐름 확인)
 logging.basicConfig(level=logging.INFO, format='%(asctime)s [%(name)s] %(message)s')
@@ -49,7 +52,14 @@ def main():
             # ------------------------------------------------------------------
             if count_t2 % 6 == 0:
                 res_run = collect_runtime_status(ts=now, batch_id=batch_id)
+                res_auth = collect_auth_logs(ts=now, batch_id=batch_id)
+                res_sys = collect_system_events(ts=now, batch_id=batch_id)
+                res_cf = collect_cloudflare_status(ts=now, batch_id=batch_id)
+                
                 if res_run: logging.info(f"[Tier 2] {res_run}")
+                if res_auth: logging.info(f"[Tier 2] {res_auth}")
+                if res_sys: logging.info(f"[Tier 2] {res_sys}")
+                if res_cf: logging.info(f"[Tier 2] {res_cf}")
             
             # ------------------------------------------------------------------
             # [Tier 3] 저빈도/통계 데이터 (1시간 주기: 10초 * 360)

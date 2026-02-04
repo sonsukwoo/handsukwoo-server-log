@@ -17,5 +17,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - /usr/bin/docker:/usr/bin/docker:ro
       - /tmp:/tmp
+      - /var/log:/var/log:ro
+      - /etc/localtime:/etc/localtime:ro
+      - /etc/timezone:/etc/timezone:ro
     # 3. 호스트 네트워크 사용 (DB, Netdata와 바로 통신)
     network_mode: "host"
