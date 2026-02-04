@@ -19,6 +19,8 @@ services:
       - /tmp:/tmp
       - /var/log:/var/log:ro
       - /usr/bin/cloudflared:/usr/bin/cloudflared:ro
+      - /usr/bin/last:/usr/bin/last:ro
+      - /usr/bin/journalctl:/usr/bin/journalctl:ro
       - /etc/localtime:/etc/localtime:ro
       - /etc/timezone:/etc/timezone:ro
     # 3. 호스트 네트워크 사용 (DB, Netdata와 바로 통신)

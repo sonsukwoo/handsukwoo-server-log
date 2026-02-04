@@ -5,7 +5,7 @@ WORKDIR /app
 # Tmux, Docker CLI, 빌드 도구 설치
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    tmux gcc python3-dev tzdata docker.io util-linux && \
+    tmux gcc python3-dev tzdata docker.io util-linux bsdextrautils && \
     rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
